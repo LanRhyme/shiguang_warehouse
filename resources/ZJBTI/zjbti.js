@@ -31,6 +31,14 @@
         }
     }
 
+    async function safeAlert(title, message) {
+        if (window.shiguangBridgePromise && typeof window.shiguangBridgePromise.showAlert === "function") {
+            return await window.shiguangBridgePromise.showAlert(title, message, "我知道了");
+        }
+        safeToast(message);
+        return true;
+    }
+
     function parseWeeks(weekStr, isSingle, isDouble) {
         const clean = String(weekStr).replace(/周/g, "").trim();
         const parts = clean.split(/[,，]/);
@@ -224,6 +232,17 @@
 
     async function runImportFlow() {
         try {
+            const currentUrl = window.location.href;
+
+            // 1. 如果还在 WebVPN 导航页或未进入教务系统
+            if (!currentUrl.includes("zjgsjw") && !currentUrl.includes("homes.action")) {
+                await safeAlert(
+                    "导入指引：请先进入教务系统",
+                    "检测到尚未进入教务系统。\n\n操作步骤：\n1. 请在当前 WebVPN 页面找到并点击「教务系统」\n2. 登录并进入教务系统首页\n3. 在首页课表区域切换为「学期课表」\n4. 确认课表加载出来后，再次点击右下角执行导入"
+                );
+                return;
+            }
+
             safeToast("正在检测浙江工商职院课表结构...");
 
             let doc = findScheduleDocument(window.document);
@@ -237,20 +256,12 @@
                 courses = parseFromTableFallback(window.document);
             }
 
+            // 2. 如果已在教务系统但未切换到学期课表
             if (!courses || courses.length === 0) {
-                const currentUrl = window.location.href;
-                let tipMsg = "未在当前页面检测到课表数据。";
-                if (currentUrl.includes("login") || currentUrl.includes("cas")) {
-                    tipMsg += "\n检测到当前处于登录页面，请先登录教务系统。";
-                } else {
-                    tipMsg += "\n请确认已进入包含课表看板的页面（如系统首页或个人课表查询页）。";
-                }
-
-                if (window.shiguangBridgePromise && typeof window.shiguangBridgePromise.showAlert === "function") {
-                    await window.shiguangBridgePromise.showAlert("未识别到课表", tipMsg, "确定");
-                } else {
-                    safeToast(tipMsg);
-                }
+                await safeAlert(
+                    "导入指引：请切换为学期课表",
+                    "已检测到教务系统，但未找到学期课表数据。\n\n请按以下步骤操作：\n1. 在教务首页课表区域上方点击切换为「学期课表」\n2. 等待课表内容完整显示\n3. 再次点击右下角执行导入"
+                );
                 return;
             }
 
@@ -292,9 +303,7 @@
             const errStr = error ? (error.stack || error.message || String(error)) : "未知错误";
             safeToast("导入发生异常: " + errStr);
             console.error("ZJBTI Import Error:", error);
-            if (window.shiguangBridgePromise && typeof window.shiguangBridgePromise.showAlert === "function") {
-                await window.shiguangBridgePromise.showAlert("导入异常", "错误原因：" + errStr, "确定");
-            }
+            await safeAlert("导入异常", "错误原因：" + errStr);
         }
     }
 
